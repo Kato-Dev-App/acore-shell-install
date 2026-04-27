@@ -435,7 +435,7 @@ build_tools() {
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DAPPS_BUILD=none \
         -DSCRIPTS=none \
-        -DMODULES=none \
+        -DMODULES=static \
         -DTOOLS_BUILD=all
 
     ok "CMake OK."
