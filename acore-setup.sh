@@ -536,11 +536,13 @@ extract_maps() {
 
     local missing_bins=()
     for bin in mapextractor vmap4extractor vmap4assembler mmaps_generator; do
-        [[ -f "${bin_dir}/${bin}" ]] || missing_bins+=("$bin")
+        if [[ ! -f "${bin_dir}/${bin}" && ! -f "${CLIENT_DIR}/${bin}" ]]; then
+            missing_bins+=("$bin")
+        fi
     done
 
     if [[ ${#missing_bins[@]} -gt 0 ]]; then
-        err "Faltan binarios de extracción en ${bin_dir}/:"
+        err "Faltan binarios de extracción (buscado en ${bin_dir}/ y ${CLIENT_DIR}/):"
         for b in "${missing_bins[@]}"; do err "  • ${b}"; done
         err "Compila las herramientas primero (opción 8)."
         (( errors++ )) || true
@@ -573,12 +575,16 @@ extract_maps() {
 
     mkdir -p "$data_dir"
 
-    # Copiar binarios al directorio del cliente para que los encuentren
-    step "Copiando binarios al directorio del cliente..."
+    # Copiar al cliente los binarios que estén en bin/ pero no en el cliente
+    local copied_bins=0
     for bin in mapextractor vmap4extractor vmap4assembler mmaps_generator; do
-        cp -f "${bin_dir}/${bin}" "${CLIENT_DIR}/${bin}"
+        if [[ ! -f "${CLIENT_DIR}/${bin}" && -f "${bin_dir}/${bin}" ]]; then
+            cp -f "${bin_dir}/${bin}" "${CLIENT_DIR}/${bin}"
+            (( copied_bins++ )) || true
+        fi
     done
-    ok "Binarios copiados."
+    [[ $copied_bins -gt 0 ]] && ok "${copied_bins} binario(s) copiado(s) al cliente." \
+                              || info "Binarios ya presentes en el directorio del cliente."
 
     # ── Paso 1: mapextractor ──────────────────────────────────────────────────
     echo ""
