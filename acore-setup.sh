@@ -424,9 +424,9 @@ build_tools() {
     info "Jobs:      ${BD}-j${jobs}${NC}"
     echo ""
     echo -e "  ${Y}  Solo se compilarán las herramientas de mapas ${D}(sin worldserver/authserver):${NC}"
-    echo -e "  ${D}  • mapextractor     — extrae DBC y mapas${NC}"
-    echo -e "  ${D}  • vmap4extractor   — extrae geometría de colisión${NC}"
-    echo -e "  ${D}  • vmap4assembler   — ensambla los vmaps${NC}"
+    echo -e "  ${D}  • map_extractor     — extrae DBC y mapas${NC}"
+    echo -e "  ${D}  • vmap4_extractor   — extrae geometría de colisión${NC}"
+    echo -e "  ${D}  • vmap4_assembler   — ensambla los vmaps${NC}"
     echo -e "  ${D}  • mmaps_generator  — genera mallas de navegación${NC}"
     echo ""
 
@@ -456,7 +456,7 @@ build_tools() {
 
     echo ""
     info "Binarios disponibles:"
-    for bin in mapextractor vmap4extractor vmap4assembler mmaps_generator; do
+    for bin in map_extractor vmap4_extractor vmap4_assembler mmaps_generator; do
         if [[ -f "${INSTALL_DIR}/bin/${bin}" ]]; then
             ok "${bin}"
         else
@@ -535,7 +535,7 @@ extract_maps() {
     fi
 
     local missing_bins=()
-    for bin in mapextractor vmap4extractor vmap4assembler mmaps_generator; do
+    for bin in map_extractor vmap4_extractor vmap4_assembler mmaps_generator; do
         if [[ ! -f "${bin_dir}/${bin}" && ! -f "${CLIENT_DIR}/${bin}" ]]; then
             missing_bins+=("$bin")
         fi
@@ -560,9 +560,9 @@ extract_maps() {
     info "Núcleos CPU: ${BD}${jobs}${NC}"
     echo ""
     echo -e "  ${W}  Pasos que se ejecutarán:${NC}"
-    echo -e "  ${D}  1. mapextractor     → dbc/  maps/${NC}"
-    echo -e "  ${D}  2. vmap4extractor   → Buildings/${NC}"
-    echo -e "  ${D}  3. vmap4assembler   → vmaps/${NC}"
+    echo -e "  ${D}  1. map_extractor     → dbc/  maps/${NC}"
+    echo -e "  ${D}  2. vmap4_extractor   → Buildings/${NC}"
+    echo -e "  ${D}  3. vmap4_assembler   → vmaps/${NC}"
     echo -e "  ${D}  4. mmaps_generator  → mmaps/   (puede tardar 4–24 h)${NC}"
     echo ""
     echo -e "  ${Y}  El proceso usa ${BD}${jobs} núcleos${NC}${Y} de CPU al máximo.${NC}"
@@ -577,7 +577,7 @@ extract_maps() {
 
     # Copiar al cliente los binarios que estén en bin/ pero no en el cliente
     local copied_bins=0
-    for bin in mapextractor vmap4extractor vmap4assembler mmaps_generator; do
+    for bin in map_extractor vmap4_extractor vmap4_assembler mmaps_generator; do
         if [[ ! -f "${CLIENT_DIR}/${bin}" && -f "${bin_dir}/${bin}" ]]; then
             cp -f "${bin_dir}/${bin}" "${CLIENT_DIR}/${bin}"
             (( copied_bins++ )) || true
@@ -586,33 +586,33 @@ extract_maps() {
     [[ $copied_bins -gt 0 ]] && ok "${copied_bins} binario(s) copiado(s) al cliente." \
                               || info "Binarios ya presentes en el directorio del cliente."
 
-    # ── Paso 1: mapextractor ──────────────────────────────────────────────────
+    # ── Paso 1: map_extractor ──────────────────────────────────────────────────
     echo ""
-    echo -e "  ${C}${BD}[1/4]${NC} mapextractor — extrayendo DBC y mapas..."
+    echo -e "  ${C}${BD}[1/4]${NC} map_extractor — extrayendo DBC y mapas..."
     (
         cd "$CLIENT_DIR"
-        ./mapextractor
+        ./map_extractor
     )
-    ok "mapextractor completado."
+    ok "map_extractor completado."
 
-    # ── Paso 2: vmap4extractor ────────────────────────────────────────────────
+    # ── Paso 2: vmap4_extractor ────────────────────────────────────────────────
     echo ""
-    echo -e "  ${C}${BD}[2/4]${NC} vmap4extractor — extrayendo geometría de colisión..."
+    echo -e "  ${C}${BD}[2/4]${NC} vmap4_extractor — extrayendo geometría de colisión..."
     (
         cd "$CLIENT_DIR"
         mkdir -p Buildings vmaps
-        ./vmap4extractor
+        ./vmap4_extractor
     )
-    ok "vmap4extractor completado."
+    ok "vmap4_extractor completado."
 
-    # ── Paso 3: vmap4assembler ────────────────────────────────────────────────
+    # ── Paso 3: vmap4_assembler ────────────────────────────────────────────────
     echo ""
-    echo -e "  ${C}${BD}[3/4]${NC} vmap4assembler — ensamblando vmaps..."
+    echo -e "  ${C}${BD}[3/4]${NC} vmap4_assembler — ensamblando vmaps..."
     (
         cd "$CLIENT_DIR"
-        ./vmap4assembler Buildings vmaps
+        ./vmap4_assembler Buildings vmaps
     )
-    ok "vmap4assembler completado."
+    ok "vmap4_assembler completado."
 
     # ── Paso 4: mmaps_generator ───────────────────────────────────────────────
     echo ""
@@ -641,7 +641,7 @@ extract_maps() {
     rm -rf "${CLIENT_DIR}/Buildings"
 
     # Limpiar binarios copiados
-    for bin in mapextractor vmap4extractor vmap4assembler mmaps_generator; do
+    for bin in map_extractor vmap4_extractor vmap4_assembler mmaps_generator; do
         rm -f "${CLIENT_DIR}/${bin}"
     done
 
