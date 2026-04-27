@@ -603,6 +603,7 @@ extract_maps() {
     echo -e "  ${C}${BD}[2/4]${NC} vmap4_extractor — extrayendo geometría de colisión..."
     (
         cd "$CLIENT_DIR"
+        rm -rf Buildings
         mkdir -p Buildings vmaps
         ./vmap4_extractor
     )
