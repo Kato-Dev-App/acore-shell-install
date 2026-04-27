@@ -1073,6 +1073,126 @@ set_realm() {
     pause
 }
 
+# ─── 14. Server management ───────────────────────────────────────────────────
+_server_running() {
+    screen -list 2>/dev/null | grep -q "\.${1}\b"
+}
+
+_server_status_line() {
+    local name="$1" label="$2"
+    if _server_running "$name"; then
+        echo -e "  ${G}●${NC}  ${label}  ${G}${BD}corriendo${NC}"
+    else
+        echo -e "  ${R}●${NC}  ${label}  ${D}detenido${NC}"
+    fi
+}
+
+manage_servers() {
+    while true; do
+        section "Gestión del Servidor"
+
+        local bin_dir="${INSTALL_DIR}/bin"
+
+        _server_status_line "acore-auth"  "authserver "
+        _server_status_line "acore-world" "worldserver"
+        echo ""
+
+        echo -e "  ${C}${BD}1)${NC}  Iniciar ambos servidores"
+        echo -e "  ${C}${BD}2)${NC}  Detener ambos servidores"
+        echo -e "  ${C}${BD}3)${NC}  Iniciar authserver"
+        echo -e "  ${C}${BD}4)${NC}  Iniciar worldserver"
+        echo -e "  ${C}${BD}5)${NC}  Detener authserver"
+        echo -e "  ${C}${BD}6)${NC}  Detener worldserver"
+        echo -e "  ${C}${BD}7)${NC}  Ver consola authserver  ${D}(Ctrl+A, D para salir)${NC}"
+        echo -e "  ${C}${BD}8)${NC}  Ver consola worldserver ${D}(Ctrl+A, D para salir)${NC}"
+        echo ""
+        echo -e "  ${R}${BD}0)${NC}  Volver al menú principal"
+        echo ""
+        read -rp "  Selecciona: " srv_choice
+
+        case "$srv_choice" in
+            1)
+                if ! _server_running "acore-auth"; then
+                    screen -dmS acore-auth bash -c "cd '${bin_dir}' && ./authserver"
+                    ok "authserver iniciado."
+                else
+                    info "authserver ya está corriendo."
+                fi
+                if ! _server_running "acore-world"; then
+                    screen -dmS acore-world bash -c "cd '${bin_dir}' && ./worldserver"
+                    ok "worldserver iniciado."
+                else
+                    info "worldserver ya está corriendo."
+                fi
+                ;;
+            2)
+                if _server_running "acore-world"; then
+                    screen -S acore-world -X quit
+                    ok "worldserver detenido."
+                else
+                    info "worldserver no estaba corriendo."
+                fi
+                if _server_running "acore-auth"; then
+                    screen -S acore-auth -X quit
+                    ok "authserver detenido."
+                else
+                    info "authserver no estaba corriendo."
+                fi
+                ;;
+            3)
+                if ! _server_running "acore-auth"; then
+                    screen -dmS acore-auth bash -c "cd '${bin_dir}' && ./authserver"
+                    ok "authserver iniciado."
+                else
+                    info "authserver ya está corriendo."
+                fi
+                ;;
+            4)
+                if ! _server_running "acore-world"; then
+                    screen -dmS acore-world bash -c "cd '${bin_dir}' && ./worldserver"
+                    ok "worldserver iniciado."
+                else
+                    info "worldserver ya está corriendo."
+                fi
+                ;;
+            5)
+                if _server_running "acore-auth"; then
+                    screen -S acore-auth -X quit
+                    ok "authserver detenido."
+                else
+                    info "authserver no estaba corriendo."
+                fi
+                ;;
+            6)
+                if _server_running "acore-world"; then
+                    screen -S acore-world -X quit
+                    ok "worldserver detenido."
+                else
+                    info "worldserver no estaba corriendo."
+                fi
+                ;;
+            7)
+                if _server_running "acore-auth"; then
+                    screen -r acore-auth
+                else
+                    warn "authserver no está corriendo."
+                    pause
+                fi
+                ;;
+            8)
+                if _server_running "acore-world"; then
+                    screen -r acore-world
+                else
+                    warn "worldserver no está corriendo."
+                    pause
+                fi
+                ;;
+            0) return ;;
+            *) warn "Opción inválida."; sleep 1 ;;
+        esac
+    done
+}
+
 # ─── Main Menu ────────────────────────────────────────────────────────────────
 main_menu() {
     while true; do
@@ -1109,6 +1229,9 @@ main_menu() {
         echo -e "  ${W}${BD}── Mapas ──────────────────────────────────────────${NC}"
         echo -e "  ${C}${BD} 9)${NC}  Extraer mapas del cliente      ${D}(mapas + vmaps + mmaps)${NC}"
         echo ""
+        echo -e "  ${W}${BD}── Servidor ───────────────────────────────────────${NC}"
+        echo -e "  ${C}${BD}14)${NC}  Gestionar servidores    ${D}(iniciar / detener / consola)${NC}"
+        echo ""
         echo -e "  ${W}${BD}── Mantenimiento ─────────────────────────────────${NC}"
         echo -e "  ${C}${BD} 6)${NC}  Aplicar config a .conf  ${D}(sin recompilar)${NC}"
         echo -e "  ${C}${BD}10)${NC}  Actualizar todo         ${D}(pull + recompilar)${NC}"
@@ -1131,6 +1254,7 @@ main_menu() {
             11) setup_database ;;
             12) set_realm ;;
             13) reset_database ;;
+            14) manage_servers ;;
             0)  echo ""; ok "¡Hasta pronto!"; echo ""; exit 0 ;;
             *)  warn "Opción inválida."; sleep 1 ;;
         esac
