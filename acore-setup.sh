@@ -416,7 +416,7 @@ build_tools() {
     info "Instalar:  ${BD}${INSTALL_DIR}${NC}"
     info "Jobs:      ${BD}-j${jobs}${NC}"
     echo ""
-    echo -e "  ${Y}  Solo se compilarán las herramientas ${D}(sin worldserver/authserver):${NC}"
+    echo -e "  ${Y}  Solo se compilarán las herramientas de mapas ${D}(sin worldserver/authserver):${NC}"
     echo -e "  ${D}  • mapextractor     — extrae DBC y mapas${NC}"
     echo -e "  ${D}  • vmap4extractor   — extrae geometría de colisión${NC}"
     echo -e "  ${D}  • vmap4assembler   — ensambla los vmaps${NC}"
@@ -429,14 +429,14 @@ build_tools() {
 
     mkdir -p "$tools_build_dir"
 
-    step "Configurando CMake (APPS_BUILD=none, TOOLS_BUILD=all)..."
+    step "Configurando CMake (APPS_BUILD=none, TOOLS_BUILD=maps-only)..."
     cmake -S "$SOURCE_DIR" -B "$tools_build_dir" \
         -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DAPPS_BUILD=none \
         -DSCRIPTS=none \
-        -DMODULES=static \
-        -DTOOLS_BUILD=all
+        -DMODULES=none \
+        -DTOOLS_BUILD=maps-only
 
     ok "CMake OK."
     step "Compilando con -j${jobs}..."
