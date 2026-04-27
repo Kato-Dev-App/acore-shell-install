@@ -575,7 +575,7 @@ extract_maps() {
 
     mkdir -p "$data_dir"
 
-    # Copiar al cliente los binarios que estén en bin/ pero no en el cliente
+    # Copiar al cliente los binarios y config que estén en bin/ pero no en el cliente
     local copied_bins=0
     for bin in map_extractor vmap4_extractor vmap4_assembler mmaps_generator; do
         if [[ ! -f "${CLIENT_DIR}/${bin}" && -f "${bin_dir}/${bin}" ]]; then
@@ -583,6 +583,9 @@ extract_maps() {
             (( copied_bins++ )) || true
         fi
     done
+    if [[ -f "${bin_dir}/mmaps-config.yaml" && ! -f "${CLIENT_DIR}/mmaps-config.yaml" ]]; then
+        cp -f "${bin_dir}/mmaps-config.yaml" "${CLIENT_DIR}/mmaps-config.yaml"
+    fi
     [[ $copied_bins -gt 0 ]] && ok "${copied_bins} binario(s) copiado(s) al cliente." \
                               || info "Binarios ya presentes en el directorio del cliente."
 
@@ -640,10 +643,11 @@ extract_maps() {
     # Limpiar Buildings (ya no se necesita)
     rm -rf "${CLIENT_DIR}/Buildings"
 
-    # Limpiar binarios copiados
+    # Limpiar binarios y config copiados
     for bin in map_extractor vmap4_extractor vmap4_assembler mmaps_generator; do
         rm -f "${CLIENT_DIR}/${bin}"
     done
+    rm -f "${CLIENT_DIR}/mmaps-config.yaml"
 
     echo ""
     ok "Extracción completa. Datos en: ${data_dir}"
