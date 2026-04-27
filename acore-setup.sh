@@ -723,6 +723,116 @@ db_apply_updates() {
     fi
 }
 
+# ─── 13. Reset databases ─────────────────────────────────────────────────────
+reset_database() {
+    section "Resetear Bases de Datos"
+
+    echo -e "  ${R}${BD}  ADVERTENCIA — Esta operación es destructiva e irreversible${NC}"
+    echo ""
+    echo -e "  ${W}  Se eliminarán completamente y se recrearán desde cero:${NC}"
+    echo ""
+    echo -e "  ${D}  • ${BD}acore_auth${NC}${D}       — Cuentas, realm list, bans${NC}"
+    echo -e "  ${D}  • ${BD}acore_characters${NC}${D} — Personajes, inventarios, progreso${NC}"
+    echo -e "  ${D}  • ${BD}acore_world${NC}${D}      — Criaturas, items, quests, loot${NC}"
+    echo ""
+    echo -e "  ${Y}  Solo se importará el SQL base. NO se aplicarán updates.${NC}"
+    echo ""
+    info "Servidor:  ${BD}${DB_HOST}:${DB_PORT}${NC}"
+
+    if [[ ! -d "${SOURCE_DIR}/data/sql/base" ]]; then
+        echo ""
+        err "No se encontraron los archivos SQL base en:"
+        err "  ${SOURCE_DIR}/data/sql/base"
+        err "Clona el repositorio primero (opción 4)."
+        pause; return
+    fi
+
+    # ── Credenciales de administrador ─────────────────────────────────────────
+    echo ""
+    echo -e "  ${W}─── Credenciales de administrador MySQL ───────────${NC}"
+    echo -e "  ${D}  No se guardan en disco.${NC}"
+    echo ""
+
+    local default_admin="${_ADMIN_USER:-root}"
+    echo -e "  ${W}Usuario administrador MySQL${NC}"
+    read -rp "  ${BD}[${default_admin}]${NC} → " v
+    _ADMIN_USER="${v:-$default_admin}"
+
+    echo ""
+    echo -e "  ${W}Contraseña administrador MySQL${NC} ${D}(vacío = sin contraseña)${NC}"
+    read -rsp "  ${BD}[(oculta)]${NC} → " _ADMIN_PASS; echo ""
+
+    echo ""
+    step "Verificando conexión MySQL..."
+    if ! mysql_a -e "SELECT 1;" &>/dev/null; then
+        err "No se pudo conectar a MySQL."
+        _ADMIN_PASS=""
+        pause; return
+    fi
+    ok "Conexión OK."
+
+    echo ""
+    if ! confirm "¿Eliminar y recrear las 3 bases de datos? Se perderán TODOS los datos."; then
+        pause; return
+    fi
+
+    # ── Drop y recrear ────────────────────────────────────────────────────────
+    echo ""
+    step "Eliminando bases de datos existentes..."
+    for db in acore_auth acore_characters acore_world; do
+        mysql_a -e "DROP DATABASE IF EXISTS \`${db}\`;" \
+            && ok "Eliminada: ${db}" \
+            || { err "Error eliminando: ${db}"; pause; return; }
+    done
+
+    step "Creando bases de datos..."
+    for db in acore_auth acore_characters acore_world; do
+        mysql_a -e \
+            "CREATE DATABASE \`${db}\`
+             DEFAULT CHARACTER SET utf8mb4
+             COLLATE utf8mb4_unicode_ci;" \
+            && ok "Creada: ${db}" \
+            || { err "Error creando: ${db}"; pause; return; }
+    done
+
+    step "Asignando permisos al usuario '${DB_USER}'..."
+    mysql_a -e "
+        CREATE USER IF NOT EXISTS '${DB_USER}'@'%'
+            IDENTIFIED BY '${DB_PASS}';
+        CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost'
+            IDENTIFIED BY '${DB_PASS}';
+        GRANT ALL PRIVILEGES ON \`acore_auth\`.*       TO '${DB_USER}'@'%';
+        GRANT ALL PRIVILEGES ON \`acore_characters\`.* TO '${DB_USER}'@'%';
+        GRANT ALL PRIVILEGES ON \`acore_world\`.*      TO '${DB_USER}'@'%';
+        GRANT ALL PRIVILEGES ON \`acore_auth\`.*       TO '${DB_USER}'@'localhost';
+        GRANT ALL PRIVILEGES ON \`acore_characters\`.* TO '${DB_USER}'@'localhost';
+        GRANT ALL PRIVILEGES ON \`acore_world\`.*      TO '${DB_USER}'@'localhost';
+        FLUSH PRIVILEGES;
+    " && ok "Permisos configurados." \
+      || { err "Error configurando permisos."; pause; return; }
+
+    # ── Importar SQL base (sin updates) ──────────────────────────────────────
+    local sql_base="${SOURCE_DIR}/data/sql/base"
+
+    echo ""
+    echo -e "  ${C}${BD}[1/3]${NC} Importando ${BD}acore_auth${NC}..."
+    db_import_dir acore_auth "${sql_base}/db_auth"
+
+    echo ""
+    echo -e "  ${C}${BD}[2/3]${NC} Importando ${BD}acore_characters${NC}..."
+    db_import_dir acore_characters "${sql_base}/db_characters"
+
+    echo ""
+    echo -e "  ${C}${BD}[3/3]${NC} Importando ${BD}acore_world${NC} ${D}(puede tardar varios minutos)...${NC}"
+    db_import_dir acore_world "${sql_base}/db_world"
+
+    echo ""
+    ok "Reset completado. Bases de datos limpias con SQL base importado."
+    info "No se han aplicado updates. Inicia el servidor para que los aplique automáticamente."
+
+    pause
+}
+
 # ─── 11. Database Setup ───────────────────────────────────────────────────────
 setup_database() {
     section "Instalación de Bases de Datos"
@@ -994,6 +1104,7 @@ main_menu() {
         echo ""
         echo -e "  ${W}${BD}── Base de Datos ──────────────────────────────────${NC}"
         echo -e "  ${C}${BD}11)${NC}  Instalar bases de datos        ${D}(crear + usuario + SQL base)${NC}"
+        echo -e "  ${R}${BD}13)${NC}  Resetear bases de datos        ${D}(DROP + recrear + SQL base, sin updates)${NC}"
         echo ""
         echo -e "  ${W}${BD}── Mapas ──────────────────────────────────────────${NC}"
         echo -e "  ${C}${BD} 9)${NC}  Extraer mapas del cliente      ${D}(mapas + vmaps + mmaps)${NC}"
@@ -1019,6 +1130,7 @@ main_menu() {
             10) update ;;
             11) setup_database ;;
             12) set_realm ;;
+            13) reset_database ;;
             0)  echo ""; ok "¡Hasta pronto!"; echo ""; exit 0 ;;
             *)  warn "Opción inválida."; sleep 1 ;;
         esac
