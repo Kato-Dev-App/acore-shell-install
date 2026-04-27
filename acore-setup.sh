@@ -643,11 +643,18 @@ extract_maps() {
 
 # Ejecuta mysql con las credenciales de administrador de sesión
 mysql_a() {
+    local host="$DB_HOST"
+    # Usar socket Unix en hosts locales para compatibilidad con auth_socket de root
+    [[ "$host" == "127.0.0.1" || "$host" == "::1" ]] && host="localhost"
+
     if [[ -n "$_ADMIN_PASS" ]]; then
-        mysql -h"$DB_HOST" -P"$DB_PORT" -u"$_ADMIN_USER" -p"$_ADMIN_PASS" \
+        mysql -h"$host" -P"$DB_PORT" -u"$_ADMIN_USER" -p"$_ADMIN_PASS" \
               --connect-timeout=10 "$@"
+    elif [[ "$_ADMIN_USER" == "root" && "$host" == "localhost" ]]; then
+        # Ubuntu/Debian MySQL 8+: root usa auth_socket, requiere sudo sin contraseña
+        sudo mysql -u root --connect-timeout=10 "$@"
     else
-        mysql -h"$DB_HOST" -P"$DB_PORT" -u"$_ADMIN_USER" \
+        mysql -h"$host" -P"$DB_PORT" -u"$_ADMIN_USER" \
               --connect-timeout=10 "$@"
     fi
 }
@@ -722,6 +729,7 @@ setup_database() {
     echo -e "  ${W}─── Credenciales de administrador MySQL ───────────${NC}"
     echo -e "  ${D}  Se usan solo para crear bases de datos y usuario.${NC}"
     echo -e "  ${D}  No se guardan en disco.${NC}"
+    echo -e "  ${D}  Con root sin contraseña en local se usará ${BD}sudo mysql${NC}${D} (auth_socket).${NC}"
     echo ""
 
     local default_admin="${_ADMIN_USER:-root}"
