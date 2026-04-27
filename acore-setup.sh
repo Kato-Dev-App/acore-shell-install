@@ -54,6 +54,7 @@ DB_HOST="127.0.0.1"
 DB_PORT="3306"
 DB_USER="acore"
 DB_PASS="acore"
+DB_LOCAL="true"
 
 SERVER_IP="0.0.0.0"
 WORLD_PORT="8085"
@@ -76,6 +77,7 @@ DB_HOST=$DB_HOST
 DB_PORT=$DB_PORT
 DB_USER=$DB_USER
 DB_PASS=$DB_PASS
+DB_LOCAL=$DB_LOCAL
 SERVER_IP=$SERVER_IP
 WORLD_PORT=$WORLD_PORT
 AUTH_PORT=$AUTH_PORT
@@ -113,6 +115,18 @@ ask_paths() {
     info "Fuente:      ${BD}${SOURCE_DIR}${NC}"
     info "Build:       ${BD}${BUILD_DIR}${NC}"
     echo ""
+
+    if [[ ! -d "$INSTALL_DIR" ]]; then
+        step "Creando directorio de instalación..."
+        mkdir -p "$INSTALL_DIR"
+        ok "Creado: ${INSTALL_DIR}"
+    fi
+
+    if [[ ! -d "$SOURCE_DIR" ]]; then
+        step "Creando directorio del código fuente..."
+        mkdir -p "$SOURCE_DIR"
+        ok "Creado: ${SOURCE_DIR}"
+    fi
 
     props_save
     pause
@@ -238,6 +252,24 @@ setup_conf_files() {
 install_deps() {
     section "Dependencias del sistema"
 
+    # ── MySQL: ¿local o remoto? ───────────────────────────────────────────────
+    echo -e "  ${W}─── Servidor MySQL ────────────────────────────────${NC}"
+    echo ""
+    echo -e "  ${W}¿El servidor MySQL estará en esta máquina o en un servidor remoto?${NC}"
+    echo -e "  ${D}  • Local  → se instalará también ${BD}mysql-server${NC}"
+    echo -e "  ${D}  • Remoto → solo librerías cliente necesarias para compilar${NC}"
+    echo ""
+
+    if [[ "$DB_LOCAL" == "true" ]]; then
+        read -rp "  ${BD}¿MySQL local? [S/n]${NC} → " ans
+        [[ "$ans" =~ ^[nN]$ ]] && DB_LOCAL="false" || DB_LOCAL="true"
+    else
+        read -rp "  ${BD}¿MySQL local? [s/N]${NC} → " ans
+        [[ "$ans" =~ ^[sS]$ ]] && DB_LOCAL="true" || DB_LOCAL="false"
+    fi
+    props_save
+    echo ""
+
     local pkgs_apt="git cmake make gcc g++ clang libmysqlclient-dev libssl-dev
                     libbz2-dev libreadline-dev libncurses-dev libboost-all-dev
                     build-essential autoconf p7zip screen curl wget"
@@ -248,6 +280,16 @@ install_deps() {
 
     local pkgs_pac="git cmake make gcc clang libmariadbclient openssl
                     boost screen curl wget"
+
+    if [[ "$DB_LOCAL" == "true" ]]; then
+        pkgs_apt="$pkgs_apt mysql-server"
+        pkgs_dnf="$pkgs_dnf mysql-server"
+        pkgs_pac="$pkgs_pac mariadb"
+        info "MySQL local: se instalará ${BD}mysql-server${NC}."
+    else
+        info "MySQL remoto: se omite la instalación del servidor MySQL."
+    fi
+    echo ""
 
     if command -v apt-get &>/dev/null; then
         step "Actualizando apt..."
@@ -665,7 +707,7 @@ setup_database() {
     echo -e "  ${D}  • ${BD}acore_world${NC}${D}      — Criaturas, items, quests, loot${NC}"
     echo ""
     info "Servidor:  ${BD}${DB_HOST}:${DB_PORT}${NC}"
-    info "Usuario juego: ${BD}${DB_USER}${NC}  ${D}(se creará si no existe)${NC}"
+    info "Usuario juego: ${BD}${DB_USER}${NC}"
 
     if [[ ! -d "${SOURCE_DIR}/data/sql/base" ]]; then
         echo ""
@@ -702,54 +744,71 @@ setup_database() {
     fi
     ok "Conexión OK."
 
-    if ! confirm "¿Crear bases de datos, usuario y poblar con SQL base?"; then
-        pause; return
+    # ── Detectar instalación nueva vs actualización ───────────────────────────
+    local is_new_install="true"
+    if mysql_a -e "SELECT 1 FROM acore_auth.account LIMIT 1;" &>/dev/null 2>&1; then
+        is_new_install="false"
     fi
 
-    # ── Crear bases de datos ──────────────────────────────────────────────────
     echo ""
-    step "Creando bases de datos..."
-    for db in acore_auth acore_characters acore_world; do
-        mysql_a -e \
-            "CREATE DATABASE IF NOT EXISTS \`${db}\`
-             DEFAULT CHARACTER SET utf8mb4
-             COLLATE utf8mb4_unicode_ci;" \
-            && ok "${db}" \
-            || { err "Error creando: ${db}"; pause; return; }
-    done
+    if [[ "$is_new_install" == "true" ]]; then
+        info "Instalación ${BD}nueva${NC} detectada — se crearán bases de datos, usuario y se importará el SQL base."
+        if ! confirm "¿Continuar con la instalación completa?"; then
+            pause; return
+        fi
+    else
+        info "Instalación ${BD}existente${NC} detectada — se aplicarán solo las actualizaciones SQL."
+        if ! confirm "¿Aplicar actualizaciones SQL?"; then
+            pause; return
+        fi
+    fi
 
-    # ── Crear usuario y permisos ──────────────────────────────────────────────
-    echo ""
-    step "Creando usuario '${DB_USER}' y asignando permisos..."
-    mysql_a -e "
-        CREATE USER IF NOT EXISTS '${DB_USER}'@'%'
-            IDENTIFIED BY '${DB_PASS}';
-        CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost'
-            IDENTIFIED BY '${DB_PASS}';
-        GRANT ALL PRIVILEGES ON \`acore_auth\`.*       TO '${DB_USER}'@'%';
-        GRANT ALL PRIVILEGES ON \`acore_characters\`.* TO '${DB_USER}'@'%';
-        GRANT ALL PRIVILEGES ON \`acore_world\`.*      TO '${DB_USER}'@'%';
-        GRANT ALL PRIVILEGES ON \`acore_auth\`.*       TO '${DB_USER}'@'localhost';
-        GRANT ALL PRIVILEGES ON \`acore_characters\`.* TO '${DB_USER}'@'localhost';
-        GRANT ALL PRIVILEGES ON \`acore_world\`.*      TO '${DB_USER}'@'localhost';
-        FLUSH PRIVILEGES;
-    " && ok "Usuario '${DB_USER}' configurado." \
-      || { err "Error configurando usuario."; pause; return; }
+    # ── Crear bases de datos (solo instalación nueva) ─────────────────────────
+    if [[ "$is_new_install" == "true" ]]; then
+        echo ""
+        step "Creando bases de datos..."
+        for db in acore_auth acore_characters acore_world; do
+            mysql_a -e \
+                "CREATE DATABASE IF NOT EXISTS \`${db}\`
+                 DEFAULT CHARACTER SET utf8mb4
+                 COLLATE utf8mb4_unicode_ci;" \
+                && ok "${db}" \
+                || { err "Error creando: ${db}"; pause; return; }
+        done
 
-    # ── Importar SQL base ─────────────────────────────────────────────────────
-    local sql_base="${SOURCE_DIR}/data/sql/base"
+        # ── Crear usuario y permisos ──────────────────────────────────────────
+        echo ""
+        step "Creando usuario '${DB_USER}' y asignando permisos..."
+        mysql_a -e "
+            CREATE USER IF NOT EXISTS '${DB_USER}'@'%'
+                IDENTIFIED BY '${DB_PASS}';
+            CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost'
+                IDENTIFIED BY '${DB_PASS}';
+            GRANT ALL PRIVILEGES ON \`acore_auth\`.*       TO '${DB_USER}'@'%';
+            GRANT ALL PRIVILEGES ON \`acore_characters\`.* TO '${DB_USER}'@'%';
+            GRANT ALL PRIVILEGES ON \`acore_world\`.*      TO '${DB_USER}'@'%';
+            GRANT ALL PRIVILEGES ON \`acore_auth\`.*       TO '${DB_USER}'@'localhost';
+            GRANT ALL PRIVILEGES ON \`acore_characters\`.* TO '${DB_USER}'@'localhost';
+            GRANT ALL PRIVILEGES ON \`acore_world\`.*      TO '${DB_USER}'@'localhost';
+            FLUSH PRIVILEGES;
+        " && ok "Usuario '${DB_USER}' configurado." \
+          || { err "Error configurando usuario."; pause; return; }
 
-    echo ""
-    echo -e "  ${C}${BD}[1/3]${NC} Importando ${BD}acore_auth${NC}..."
-    db_import_dir acore_auth "${sql_base}/db_auth"
+        # ── Importar SQL base ─────────────────────────────────────────────────
+        local sql_base="${SOURCE_DIR}/data/sql/base"
 
-    echo ""
-    echo -e "  ${C}${BD}[2/3]${NC} Importando ${BD}acore_characters${NC}..."
-    db_import_dir acore_characters "${sql_base}/db_characters"
+        echo ""
+        echo -e "  ${C}${BD}[1/3]${NC} Importando ${BD}acore_auth${NC}..."
+        db_import_dir acore_auth "${sql_base}/db_auth"
 
-    echo ""
-    echo -e "  ${C}${BD}[3/3]${NC} Importando ${BD}acore_world${NC} ${D}(puede tardar varios minutos)...${NC}"
-    db_import_dir acore_world "${sql_base}/db_world"
+        echo ""
+        echo -e "  ${C}${BD}[2/3]${NC} Importando ${BD}acore_characters${NC}..."
+        db_import_dir acore_characters "${sql_base}/db_characters"
+
+        echo ""
+        echo -e "  ${C}${BD}[3/3]${NC} Importando ${BD}acore_world${NC} ${D}(puede tardar varios minutos)...${NC}"
+        db_import_dir acore_world "${sql_base}/db_world"
+    fi
 
     # ── Aplicar actualizaciones ───────────────────────────────────────────────
     echo ""
@@ -826,8 +885,10 @@ main_menu() {
         banner
 
         if [[ -f "$PROPS_FILE" ]]; then
+            local db_loc_label="${DB_LOCAL:-true}"
+            [[ "$db_loc_label" == "true" ]] && db_loc_label="local" || db_loc_label="remoto"
             echo -e "  ${D}Install: ${INSTALL_DIR}${NC}"
-            echo -e "  ${D}DB:      ${DB_USER}@${DB_HOST}:${DB_PORT}  │  World: ${SERVER_IP}:${WORLD_PORT}  Auth: ${AUTH_PORT}${NC}"
+            echo -e "  ${D}DB:      ${DB_USER}@${DB_HOST}:${DB_PORT}  │  MySQL: ${db_loc_label}  │  World: ${SERVER_IP}:${WORLD_PORT}  Auth: ${AUTH_PORT}${NC}"
             local client_label="${CLIENT_DIR:-${R}no configurado${NC}}"
             echo -e "  ${D}Cliente: ${client_label}${NC}"
         else
