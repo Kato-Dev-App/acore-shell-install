@@ -399,7 +399,7 @@ build() {
 
 # ─── 6. Build with extraction tools ──────────────────────────────────────────
 build_tools() {
-    section "Compilar con herramientas de extracción"
+    section "Compilar herramientas de extracción"
 
     if [[ ! -d "$SOURCE_DIR" ]]; then
         err "Código fuente no encontrado: ${SOURCE_DIR}"
@@ -409,39 +409,42 @@ build_tools() {
 
     local jobs
     jobs=$(nproc)
+    local tools_build_dir="${SOURCE_DIR}/build-tools"
 
     info "Fuente:    ${BD}${SOURCE_DIR}${NC}"
+    info "Build dir: ${BD}${tools_build_dir}${NC}  ${D}(separado del servidor)${NC}"
     info "Instalar:  ${BD}${INSTALL_DIR}${NC}"
     info "Jobs:      ${BD}-j${jobs}${NC}"
     echo ""
-    echo -e "  ${Y}  Se compilará con ${BD}TOOLS_BUILD=all${NC}${Y} para generar:${NC}"
+    echo -e "  ${Y}  Solo se compilarán las herramientas ${D}(sin worldserver/authserver):${NC}"
     echo -e "  ${D}  • mapextractor     — extrae DBC y mapas${NC}"
     echo -e "  ${D}  • vmap4extractor   — extrae geometría de colisión${NC}"
     echo -e "  ${D}  • vmap4assembler   — ensambla los vmaps${NC}"
     echo -e "  ${D}  • mmaps_generator  — genera mallas de navegación${NC}"
     echo ""
 
-    if ! confirm "¿Compilar con herramientas? (10–60 min)"; then
+    if ! confirm "¿Compilar herramientas? (5–20 min)"; then
         pause; return
     fi
 
-    mkdir -p "$BUILD_DIR"
+    mkdir -p "$tools_build_dir"
 
-    step "Configurando CMake con TOOLS_BUILD=all..."
-    cmake -S "$SOURCE_DIR" -B "$BUILD_DIR" \
+    step "Configurando CMake (APPS_BUILD=none, TOOLS_BUILD=all)..."
+    cmake -S "$SOURCE_DIR" -B "$tools_build_dir" \
         -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-        -DSCRIPTS=static \
-        -DMODULES=static \
+        -DAPPS_BUILD=none \
+        -DSCRIPTS=none \
+        -DMODULES=none \
         -DTOOLS_BUILD=all
 
     ok "CMake OK."
     step "Compilando con -j${jobs}..."
-    make -C "$BUILD_DIR" -j"$jobs"
+    make -C "$tools_build_dir" -j"$jobs"
     ok "Compilación OK."
 
     step "Instalando en ${INSTALL_DIR}..."
-    make -C "$BUILD_DIR" install
+    make -C "$tools_build_dir" install
     ok "Herramientas instaladas en: ${INSTALL_DIR}/bin/"
 
     echo ""
@@ -454,7 +457,6 @@ build_tools() {
         fi
     done
 
-    setup_conf_files
     pause
 }
 
