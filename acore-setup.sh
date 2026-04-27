@@ -62,6 +62,10 @@ AUTH_PORT="3724"
 
 CLIENT_DIR=""
 
+REALM_NAME="AzerothCore"
+PUBLIC_IP="127.0.0.1"
+LOCAL_IP="127.0.0.1"
+
 # Credenciales de administrador MySQL — solo para esta sesión, nunca se guardan
 _ADMIN_USER=""
 _ADMIN_PASS=""
@@ -82,6 +86,9 @@ SERVER_IP=$SERVER_IP
 WORLD_PORT=$WORLD_PORT
 AUTH_PORT=$AUTH_PORT
 CLIENT_DIR=$CLIENT_DIR
+REALM_NAME=$REALM_NAME
+PUBLIC_IP=$PUBLIC_IP
+LOCAL_IP=$LOCAL_IP
 EOF
     ok "Configuración guardada en: ${PROPS_FILE}"
 }
@@ -889,6 +896,62 @@ update() {
     pause
 }
 
+# ─── 12. Realm config ────────────────────────────────────────────────────────
+set_realm() {
+    section "Configurar Realm"
+
+    # Intentar leer valores actuales de la BD
+    local db_name db_addr db_local
+    if db_name=$(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" \
+                    --connect-timeout=5 --skip-column-names -se \
+                    "SELECT name, address, localAddress FROM acore_auth.realmlist WHERE id=1;" \
+                    2>/dev/null); then
+        read -r _db_name _db_addr _db_local <<< "$db_name"
+        [[ -n "$_db_name"  ]] && REALM_NAME="$_db_name"
+        [[ -n "$_db_addr"  ]] && PUBLIC_IP="$_db_addr"
+        [[ -n "$_db_local" ]] && LOCAL_IP="$_db_local"
+        info "Valores leídos de la base de datos."
+    else
+        warn "No se pudo conectar a la BD — usando valores guardados."
+    fi
+
+    echo -e "  ${D}Dejar vacío para aceptar el valor entre corchetes.${NC}"
+    echo ""
+
+    echo -e "  ${W}Nombre del realm${NC}"
+    read -rp "  ${BD}[${REALM_NAME}]${NC} → " v; [[ -n "$v" ]] && REALM_NAME="$v"
+
+    echo ""
+    echo -e "  ${W}IP pública${NC} ${D}(los jugadores se conectan a esta dirección)${NC}"
+    read -rp "  ${BD}[${PUBLIC_IP}]${NC} → " v; [[ -n "$v" ]] && PUBLIC_IP="$v"
+
+    echo ""
+    echo -e "  ${W}IP local${NC} ${D}(red interna / LAN)${NC}"
+    read -rp "  ${BD}[${LOCAL_IP}]${NC} → " v; [[ -n "$v" ]] && LOCAL_IP="$v"
+
+    echo ""
+    props_save
+
+    # Aplicar en la BD
+    step "Actualizando realmlist en acore_auth..."
+    if mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" \
+            --connect-timeout=10 acore_auth \
+            -e "UPDATE realmlist SET name='${REALM_NAME}', address='${PUBLIC_IP}', localAddress='${LOCAL_IP}' WHERE id=1;" \
+            2>/dev/null; then
+        ok "Realm actualizado en la base de datos."
+    else
+        warn "No se pudo actualizar la BD — los valores están guardados en ${PROPS_FILE}."
+        warn "Aplícalos manualmente cuando la BD esté disponible:"
+        warn "  UPDATE realmlist SET name='${REALM_NAME}', address='${PUBLIC_IP}', localAddress='${LOCAL_IP}' WHERE id=1;"
+    fi
+
+    echo ""
+    info "Realm:    ${BD}${REALM_NAME}${NC}"
+    info "Pública:  ${BD}${PUBLIC_IP}${NC}"
+    info "Local:    ${BD}${LOCAL_IP}${NC}"
+    pause
+}
+
 # ─── Main Menu ────────────────────────────────────────────────────────────────
 main_menu() {
     while true; do
@@ -910,6 +973,7 @@ main_menu() {
         echo -e "  ${C}${BD} 1)${NC}  Rutas de instalación"
         echo -e "  ${C}${BD} 2)${NC}  MySQL y puertos del servidor"
         echo -e "  ${C}${BD} 7)${NC}  Directorio del cliente WoW  ${D}(para extracción)${NC}"
+        echo -e "  ${C}${BD}12)${NC}  Nombre del realm, IP pública e IP local"
         echo ""
         echo -e "  ${W}${BD}── Instalación ───────────────────────────────────${NC}"
         echo -e "  ${C}${BD} 3)${NC}  Instalar dependencias del sistema"
@@ -943,6 +1007,7 @@ main_menu() {
             9)  extract_maps ;;
             10) update ;;
             11) setup_database ;;
+            12) set_realm ;;
             0)  echo ""; ok "¡Hasta pronto!"; echo ""; exit 0 ;;
             *)  warn "Opción inválida."; sleep 1 ;;
         esac
